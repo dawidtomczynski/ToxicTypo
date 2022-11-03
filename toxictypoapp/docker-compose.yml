@@ -1,0 +1,50 @@
+version: "3.7"
+services:
+  jenkins:
+    container_name: jenkins
+    build:
+      dockerfile: ./Dockerfile-jenkins
+    environment:
+      - JENKINS_OPTS="--httpPort=8081"
+    ports:
+      - 8080:8081
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.aws:/var/jenkins_home/.aws
+      - ./dawid-aws.pem:/aws/dawid-aws.pem
+    networks:
+      - toxic-typo
+    restart: always
+    privileged: true
+  gitlab:
+    container_name: gitlab
+    image: gitlab/gitlab-ce
+    hostname: '3.67.186.44'
+    volumes:
+       - /srv/gitlab/config:/etc/gitlab
+       - /srv/gitlab/logs:/var/log/gitlab
+       - /srv/gitlab/data:/var/opt/gitlab
+    ports:
+      - 80:80
+      - 2222:22
+    networks:
+      - toxic-typo
+    restart: always
+  artifactory:
+    container_name: artifactory
+    image: releases-docker.jfrog.io/jfrog/artifactory-oss:latest
+    volumes:
+      - /home/ubuntu/jfrog/artifactory/var/:/var/opt/jfrog/artifactory
+    ports:
+      - 8082:8082
+    networks:
+      - toxic-typo
+    restart: always
+networks:
+  toxic-typo:
+    name: toxic-typo
+    driver: bridge
+volumes:
+  jenkins-data:
+    external: true

@@ -1,0 +1,4 @@
+FROM openjdk:8-jdk-alpine
+COPY /target/toxictypoapp-1.0.jar /app/toxictypoapp.jar
+WORKDIR /app
+ENTRYPOINT ["java", "-jar", "toxictypoapp.jar"]

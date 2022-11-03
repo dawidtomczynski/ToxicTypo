@@ -1,0 +1,98 @@
+pipeline {
+	agent any
+	tools {
+		maven 'maven-3.6.2'
+		jdk 'jdk-8'
+	}
+	options {
+		buildDiscarder(logRotator(numToKeepStr: '5'))
+		gitLabConnection gitLabConnection: 'gitlab-dawid'
+	}
+    //
+	triggers {
+        gitlab(
+            triggerOnPush: true,
+            branchFilterType: 'All'
+        )
+    }
+    //
+	stages {
+		stage('Compile') {
+			when { expression {env.BRANCH_NAME == 'main' || env.BRANCH_NAME =~ 'feature/*'} }
+			steps {
+				sh 'mvn clean compile'
+			}
+		}
+		stage('Unit Tests') {
+			when { expression {env.BRANCH_NAME == 'main' || env.BRANCH_NAME =~ 'feature/*'} }
+			steps {
+				sh 'mvn clean test'
+			}
+		}
+		stage('Build') {
+			when { expression {env.BRANCH_NAME == 'main' || env.BRANCH_NAME =~ 'feature/*'} }
+			steps {
+				sh 'mvn clean verify'
+			}
+		}
+		stage('Run') {
+			when { expression {env.BRANCH_NAME == 'main' || env.BRANCH_NAME =~ 'feature/*'} }
+			steps {
+				sh """
+					cd target
+					java -jar toxictypoapp-1.0.jar &
+				"""
+			}
+		}
+		stage('E2E Tests') {
+			when { expression {env.BRANCH_NAME == 'main' || env.BRANCH_NAME =~ 'feature/*'} }
+			steps {
+				sh """
+					docker build -t test -f Dockerfile-test --network toxic-typo .
+					docker run --rm --name test --network toxic-typo test
+				"""
+			}
+		}
+		stage('Deploy') {
+			when {
+				branch 'main'
+			}
+			steps {
+				sh """
+					aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 644435390668.dkr.ecr.eu-central-1.amazonaws.com/dawid-toxictypoapp
+					docker push 644435390668.dkr.ecr.eu-central-1.amazonaws.com/dawid-toxictypoapp:latest
+					docker save -o ~/my-docker-images/toxictypoapp.tar 644435390668.dkr.ecr.eu-central-1.amazonaws.com/dawid-toxictypoapp:latest
+				"""
+				withCredentials([file(credentialsId: 'aws-key', variable: 'AWS')]) {
+					sh """
+						aws elbv2 deregister-targets --target-group-arn arn:aws:elasticloadbalancing:eu-central-1:644435390668:targetgroup/dawid-targetgroup/d1704d0010ec30d0 --targets Id=i-04ab7caa4183c47d6
+						scp -r -i $AWS ~/my-docker-images/toxictypoapp.tar ubuntu@ec2-18-184-3-110.eu-central-1.compute.amazonaws.com:/home/ubuntu
+						scp -r -i $AWS ./entrypoint.sh ubuntu@ec2-18-184-3-110.eu-central-1.compute.amazonaws.com:/home/ubuntu
+						ssh -i $AWS ubuntu@ec2-18-184-3-110.eu-central-1.compute.amazonaws.com /home/ubuntu/entrypoint.sh
+						aws ec2 reboot-instances --instance-ids i-04ab7caa4183c47d6
+						aws elbv2 register-targets --target-group-arn arn:aws:elasticloadbalancing:eu-central-1:644435390668:targetgroup/dawid-targetgroup/d1704d0010ec30d0 --targets Id=i-04ab7caa4183c47d6
+						
+						sleep 3m
+
+						aws elbv2 deregister-targets --target-group-arn arn:aws:elasticloadbalancing:eu-central-1:644435390668:targetgroup/dawid-targetgroup/d1704d0010ec30d0 --targets Id=i-071d53dca8a48ac55
+						scp -r -i $AWS ~/my-docker-images/toxictypoapp.tar ubuntu@ec2-18-197-59-197.eu-central-1.compute.amazonaws.com:/home/ubuntu
+						scp -r -i $AWS ./entrypoint.sh ubuntu@ec2-18-197-59-197.eu-central-1.compute.amazonaws.com:/home/ubuntu
+						ssh -i $AWS ubuntu@ec2-18-197-59-197.eu-central-1.compute.amazonaws.com /home/ubuntu/entrypoint.sh
+						aws ec2 reboot-instances --instance-ids i-071d53dca8a48ac55
+						aws elbv2 register-targets --target-group-arn arn:aws:elasticloadbalancing:eu-central-1:644435390668:targetgroup/dawid-targetgroup/d1704d0010ec30d0 --targets Id=i-071d53dca8a48ac55
+					"""
+				}
+			}
+		}
+	}
+	post { 
+		failure {
+			emailext body: 'Job failed', subject: 'Job failed', to: 'dawidtomczynski@gmail.com'
+		}
+		cleanup {
+			cleanWs()
+			sh 'docker rmi test'
+		}
+	}
+}
+

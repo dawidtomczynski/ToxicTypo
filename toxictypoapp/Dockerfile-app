@@ -1,0 +1,11 @@
+FROM maven:3.8.6-openjdk-8-slim as build
+COPY ./toxictypoapp /toxictypoapp
+COPY ./settings.xml /usr/share/maven/conf/settings.xml
+WORKDIR /toxictypoapp
+RUN mvn verify
+
+FROM openjdk:8-jdk-alpine
+COPY --from=build /toxictypoapp/target /toxictypoapp
+WORKDIR /toxictypoapp
+ENTRYPOINT ["java", "-jar", "toxictypoapp-1.0-SNAPSHOT.jar"]
+

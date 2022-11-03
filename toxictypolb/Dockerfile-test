@@ -1,0 +1,5 @@
+FROM python:2.7-slim
+COPY ./src/test/ /test/
+WORKDIR /test
+RUN pip install -r requirments.txt
+ENTRYPOINT ["python", "e2e_test.py", "jenkins:8080", "sanity", "5"]
