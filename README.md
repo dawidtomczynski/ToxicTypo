@@ -1,1 +1,1 @@
-ToxicTypo project - tech stack Jenkins
+ToxicTypo project - tech stack Jenkins, SemVer versioning
